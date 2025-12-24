@@ -1,0 +1,13 @@
+{
+    "autodeskProduct": "Fusion",
+    "type": "addin",
+    "id": "FaceCenterPoint_Sketch_v1",
+    "author": "Parker",
+    "description": {
+        "": "Places sketch points at the center of selected face(s) while editing a sketch. Supports both regular and construction points."
+    },
+    "version": "1.0.0",
+    "runOnStartup": true,
+    "supportedOS": "windows|mac",
+    "editEnabled": true
+}
