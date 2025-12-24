@@ -158,6 +158,119 @@ def get_position_on_axis(entity, axis_index: int) -> float:
     return None
 
 
+def analyze_cylindrical_face(entity) -> tuple:
+    """
+    Check if entity is a cylindrical face and return its center and axis info.
+    
+    Returns: (center_point, axis_indices) or (None, None)
+    - center_point: Point3D at the center of the cylinder
+    - axis_indices: list of 2 axis indices to center on (perpendicular to cylinder axis)
+    """
+    if not isinstance(entity, adsk.fusion.BRepFace):
+        return None, None
+    
+    geom = entity.geometry
+    if not isinstance(geom, adsk.core.Cylinder):
+        return None, None
+    
+    # Get cylinder axis direction
+    axis = geom.axis
+    origin = geom.origin
+    
+    # Determine which global axis the cylinder axis is most aligned with
+    ax = abs(axis.x)
+    ay = abs(axis.y)
+    az = abs(axis.z)
+    
+    if ax >= ay and ax >= az:
+        # Cylinder runs along X, center on Y and Z
+        cylinder_axis = 0
+        center_axes = [1, 2]
+    elif ay >= ax and ay >= az:
+        # Cylinder runs along Y, center on X and Z
+        cylinder_axis = 1
+        center_axes = [0, 2]
+    else:
+        # Cylinder runs along Z, center on X and Y
+        cylinder_axis = 2
+        center_axes = [0, 1]
+    
+    return origin, center_axes
+
+
+def analyze_spherical_face(entity) -> tuple:
+    """
+    Check if entity is a spherical face and return its center.
+    
+    Returns: (center_point, axis_indices) or (None, None)
+    - center_point: Point3D at the center of the sphere
+    - axis_indices: [0, 1, 2] (all three axes)
+    """
+    if not isinstance(entity, adsk.fusion.BRepFace):
+        return None, None
+    
+    geom = entity.geometry
+    if not isinstance(geom, adsk.core.Sphere):
+        return None, None
+    
+    center = geom.origin
+    return center, [0, 1, 2]
+
+
+def analyze_circular_edge(entity) -> tuple:
+    """
+    Check if entity is a circular edge and return its center and axis info.
+    
+    Returns: (center_point, axis_indices) or (None, None)
+    """
+    if not isinstance(entity, adsk.fusion.BRepEdge):
+        return None, None
+    
+    geom = entity.geometry
+    
+    # Check for Circle3D
+    if isinstance(geom, adsk.core.Circle3D):
+        center = geom.center
+        normal = geom.normal
+        
+        # Determine which axis the circle is perpendicular to
+        ax = abs(normal.x)
+        ay = abs(normal.y)
+        az = abs(normal.z)
+        
+        if ax >= ay and ax >= az:
+            # Circle faces X, center on Y and Z
+            center_axes = [1, 2]
+        elif ay >= ax and ay >= az:
+            # Circle faces Y, center on X and Z
+            center_axes = [0, 2]
+        else:
+            # Circle faces Z, center on X and Y
+            center_axes = [0, 1]
+        
+        return center, center_axes
+    
+    # Check for Arc3D (partial circle)
+    if isinstance(geom, adsk.core.Arc3D):
+        center = geom.center
+        normal = geom.normal
+        
+        ax = abs(normal.x)
+        ay = abs(normal.y)
+        az = abs(normal.z)
+        
+        if ax >= ay and ax >= az:
+            center_axes = [1, 2]
+        elif ay >= ax and ay >= az:
+            center_axes = [0, 2]
+        else:
+            center_axes = [0, 1]
+        
+        return center, center_axes
+    
+    return None, None
+
+
 def compute_center_and_axis(ref1, ref2) -> tuple:
     """
     Given two reference entities, compute the center point between them
@@ -299,6 +412,13 @@ def add_reference_selection_filters(selInput: adsk.core.SelectionCommandInput):
 
 def update_reference_visibility(inputs: adsk.core.CommandInputs):
     """Update visibility of reference inputs based on checkboxes."""
+    # Center point visibility
+    enableCenterPoint = inputs.itemById("enableCenterPoint")
+    centerPointInput = inputs.itemById("centerPoint")
+    if enableCenterPoint and centerPointInput:
+        centerPointInput.isVisible = enableCenterPoint.value
+    
+    # Reference pairs visibility
     for i in range(1, 4):
         checkbox = inputs.itemById(f"enablePair{i}")
         refInput = inputs.itemById(f"refPair{i}")
@@ -350,8 +470,41 @@ def execute_centering(inputs: adsk.core.CommandInputs, preview: bool = False):
     deltas = [0.0, 0.0, 0.0]  # X, Y, Z
     axes_used = set()
     axis_labels = []
+    targetCoords = [targetCenter.x, targetCenter.y, targetCenter.z]
     
+    # ─────────────────────────────────────────────────────────────────────────
+    # Process Center Point (cylinder/sphere/circle) FIRST
+    # ─────────────────────────────────────────────────────────────────────────
+    enableCenterPoint = inputs.itemById("enableCenterPoint")
+    centerPointInput = inputs.itemById("centerPoint")
+    
+    if enableCenterPoint and enableCenterPoint.value and centerPointInput and centerPointInput.selectionCount > 0:
+        entity = centerPointInput.selection(0).entity
+        
+        # Try cylinder first
+        centerPt, centerAxes = analyze_cylindrical_face(entity)
+        
+        # Try sphere if not cylinder
+        if centerPt is None:
+            centerPt, centerAxes = analyze_spherical_face(entity)
+        
+        # Try circular edge if not sphere
+        if centerPt is None:
+            centerPt, centerAxes = analyze_circular_edge(entity)
+        
+        if centerPt is not None and centerAxes is not None:
+            centerCoords = [centerPt.x, centerPt.y, centerPt.z]
+            for axisIndex in centerAxes:
+                if axisIndex not in axes_used:
+                    axes_used.add(axisIndex)
+                    axis_labels.append(AXIS_NAMES[axisIndex])
+                    deltas[axisIndex] = centerCoords[axisIndex] - targetCoords[axisIndex]
+        elif not preview:
+            ui.messageBox("Could not analyze center point geometry.", "Center Body - Warning")
+    
+    # ─────────────────────────────────────────────────────────────────────────
     # Process each reference pair
+    # ─────────────────────────────────────────────────────────────────────────
     for i in range(1, 4):
         checkbox = inputs.itemById(f"enablePair{i}")
         if not checkbox or not checkbox.value:
@@ -386,7 +539,6 @@ def execute_centering(inputs: adsk.core.CommandInputs, preview: bool = False):
         axis_labels.append(AXIS_NAMES[axisIndex])
         
         # Compute delta for this axis
-        targetCoords = [targetCenter.x, targetCenter.y, targetCenter.z]
         deltas[axisIndex] = (desiredCenter - targetCoords[axisIndex]) + offset
     
     # Create translation vector
@@ -397,9 +549,10 @@ def execute_centering(inputs: adsk.core.CommandInputs, preview: bool = False):
             ui.messageBox("Target is already centered (or very close).", "Center Body - Info")
         return
     
-    # Build feature name
+    # Build feature name (sort axis labels for consistency)
     if axis_labels:
-        featureName = f"Center Body ({'+'.join(axis_labels)})"
+        sorted_labels = sorted(axis_labels, key=lambda x: AXIS_NAMES.index(x))
+        featureName = f"Center Body ({'+'.join(sorted_labels)})"
     else:
         featureName = "Center Body"
     
@@ -476,6 +629,22 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
     centerMethodDropdown.listItems.add(CENTER_OF_MASS, False)
     
     # ─────────────────────────────────────────────────────────────────────────
+    # CENTER POINT (for cylinders, spheres, circles - single selection)
+    # ─────────────────────────────────────────────────────────────────────────
+    inputs.addBoolValueInput("enableCenterPoint", "Center Point (Cylinder/Sphere)", True, "", False)
+    
+    centerPointInput = inputs.addSelectionInput(
+        "centerPoint", 
+        "Select Cylinder/Sphere", 
+        "Select a cylindrical face, spherical face, or circular edge"
+    )
+    centerPointInput.addSelectionFilter("CylindricalFaces")
+    centerPointInput.addSelectionFilter("SphericalFaces")
+    centerPointInput.addSelectionFilter("CircularEdges")
+    centerPointInput.setSelectionLimits(0, 1)
+    centerPointInput.isVisible = False
+    
+    # ─────────────────────────────────────────────────────────────────────────
     # REFERENCE PAIR 1 (enabled by default)
     # ─────────────────────────────────────────────────────────────────────────
     inputs.addBoolValueInput("enablePair1", "Reference Pair 1", True, "", True)
@@ -542,7 +711,7 @@ def command_input_changed(args: adsk.core.InputChangedEventArgs):
     futil.log(f'{CMD_NAME} Input Changed Event fired from a change to {changed_input.id}')
     
     # Toggle visibility when checkboxes change
-    if changed_input.id in ["enablePair1", "enablePair2", "enablePair3"]:
+    if changed_input.id in ["enablePair1", "enablePair2", "enablePair3", "enableCenterPoint"]:
         update_reference_visibility(inputs)
 
 
@@ -558,22 +727,29 @@ def command_validate_input(args: adsk.core.ValidateInputsEventArgs):
         args.areInputsValid = False
         return
     
-    # At least one reference pair must be enabled and have 2 selections
-    hasValidPair = False
+    hasValidReference = False
     
+    # Check center point
+    enableCenterPoint = inputs.itemById("enableCenterPoint")
+    centerPointInput = inputs.itemById("centerPoint")
+    if enableCenterPoint and enableCenterPoint.value:
+        if centerPointInput and centerPointInput.selectionCount == 1:
+            hasValidReference = True
+    
+    # Check reference pairs
     for i in range(1, 4):
         checkbox = inputs.itemById(f"enablePair{i}")
         refInput = inputs.itemById(f"refPair{i}")
         
         if checkbox and checkbox.value:
             if refInput and refInput.selectionCount == 2:
-                hasValidPair = True
+                hasValidReference = True
             elif refInput and refInput.selectionCount > 0 and refInput.selectionCount < 2:
-                # Partially filled - invalid
+                # Partially filled pair - invalid
                 args.areInputsValid = False
                 return
     
-    args.areInputsValid = hasValidPair
+    args.areInputsValid = hasValidReference
 
 
 def command_destroy(args: adsk.core.CommandEventArgs):
