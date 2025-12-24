@@ -1,0 +1,195 @@
+# Fusion 360 Script: Batch Generate Gridfinity Bins with Labels from CSV
+# Version 6.0 - FINAL PRODUCTION VERSION
+# 
+# Updates ALL dimension parameters including extras found during testing.
+# This version handles the complete set of renamed parameters.
+#
+# REQUIRED MODEL PARAMETERS:
+# - Bin_Width, Bin_Length (grid units)
+# - outer_width_1, outer_width_2, outer_width_3, outer_width_6
+# - outer_length_1, outer_length_2, outer_length_3, outer_length_5, outer_length_6
+# - base_width, base_length
+# - inner_width_1, inner_width_2
+# - inner_length
+#
+# REQUIRED USER PARAMETERS:
+# - Label_Type, Label_Name, Label_Color, Label_Qt (all text)
+
+import adsk.core, adsk.fusion, traceback
+import csv
+import os
+
+def run(context):
+    ui = None
+    try:
+        app = adsk.core.Application.get()
+        ui = app.userInterface
+        design = adsk.fusion.Design.cast(app.activeProduct)
+        
+        if not design:
+            ui.messageBox('No active Fusion design found. Please open your Gridfinity bin file first.')
+            return
+        
+        # Get all model parameters
+        all_params = design.allParameters
+        
+        # Dictionary to store found parameters
+        params_dict = {}
+        
+        # Find all required MODEL parameters by name
+        param_names = [
+            'Bin_Width', 'Bin_Length',
+            'outer_width_1', 'outer_width_2', 'outer_width_3', 'outer_width_6',
+            'outer_length_1', 'outer_length_2', 'outer_length_3', 'outer_length_5', 'outer_length_6',
+            'base_width', 'base_length',
+            'inner_width_1', 'inner_width_2', 'inner_length'
+        ]
+        
+        for param in all_params:
+            if param.name in param_names:
+                params_dict[param.name] = param
+        
+        # Verify all required model parameters exist
+        missing_model = [name for name in param_names if name not in params_dict]
+        
+        if missing_model:
+            ui.messageBox('Missing required MODEL parameters:\n\n' + '\n'.join(missing_model) + 
+                         '\n\nPlease rename the parameters as specified.')
+            return
+        
+        # Get USER parameters (text labels)
+        user_params = design.userParameters
+        param_label_type = user_params.itemByName('Label_Type')
+        param_label_name = user_params.itemByName('Label_Name')
+        param_label_color = user_params.itemByName('Label_Color')
+        param_label_qt = user_params.itemByName('Label_Qt')
+        
+        # Verify label parameters exist
+        missing_user = []
+        if not param_label_type:
+            missing_user.append('Label_Type (user parameter, text)')
+        if not param_label_name:
+            missing_user.append('Label_Name (user parameter, text)')
+        if not param_label_color:
+            missing_user.append('Label_Color (user parameter, text)')
+        if not param_label_qt:
+            missing_user.append('Label_Qt (user parameter, text)')
+        
+        if missing_user:
+            ui.messageBox('Missing required USER parameters:\n\n' + '\n'.join(missing_user) + 
+                         '\n\nPlease create these text parameters.')
+            return
+        
+        # Prompt for CSV file
+        fileDialog = ui.createFileDialog()
+        fileDialog.title = 'Select Screw_Bin_Master_Sheet.csv'
+        fileDialog.filter = 'CSV files (*.csv);;All files (*.*)'
+        fileDialog.isMultiSelectEnabled = False
+        
+        if fileDialog.showOpen() != adsk.core.DialogResults.DialogOK:
+            return
+        
+        csv_path = fileDialog.filename
+        
+        # Prompt for output folder
+        folderDialog = ui.createFolderDialog()
+        folderDialog.title = 'Select Output Folder for STL Files'
+        
+        if folderDialog.showDialog() != adsk.core.DialogResults.DialogOK:
+            return
+        
+        output_folder = folderDialog.folder
+        
+        # Read CSV and process each bin
+        with open(csv_path, 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            rows = list(reader)
+        
+        # Filter out empty rows
+        rows = [row for row in rows if row['Label_Type'].strip()]
+        
+        total_bins = len(rows)
+        progressDialog = ui.createProgressDialog()
+        progressDialog.cancelButtonText = 'Cancel'
+        progressDialog.isBackgroundTranslucent = False
+        progressDialog.isCancelButtonShown = True
+        progressDialog.show('Generating Bins', 'Processing bin %v of %m', 0, total_bins, 1)
+        
+        for i, row in enumerate(rows):
+            if progressDialog.wasCancelled:
+                break
+            
+            # Get values from CSV
+            label_type = row['Label_Type'].strip()
+            label_name = row['Label_Name'].strip()
+            bin_width = int(row['Bin_Width'].strip())
+            bin_length = int(row['Bin_Length'].strip())
+            label_color = row['Label_Color'].strip()
+            label_qt = row['Label_Qt'].strip()
+            
+            # Calculate all dimension values based on grid units
+            outer_width = (bin_width * 42.0) - 0.5
+            outer_length = (bin_length * 42.0) - 0.5
+            base_width = outer_width + 1.0
+            base_length = outer_length + 1.0
+            inner_width = outer_width - 3.2
+            inner_length = outer_length - 3.2
+            
+            # Update grid unit parameters
+            params_dict['Bin_Width'].expression = str(bin_width)
+            params_dict['Bin_Length'].expression = str(bin_length)
+            
+            # Update ALL outer width parameters
+            for param_name in ['outer_width_1', 'outer_width_2', 'outer_width_3', 'outer_width_6']:
+                params_dict[param_name].expression = f'{outer_width} mm'
+            
+            # Update ALL outer length parameters
+            for param_name in ['outer_length_1', 'outer_length_2', 'outer_length_3', 'outer_length_5', 'outer_length_6']:
+                params_dict[param_name].expression = f'{outer_length} mm'
+            
+            # Update base dimension parameters
+            params_dict['base_width'].expression = f'{base_width} mm'
+            params_dict['base_length'].expression = f'{base_length} mm'
+            
+            # Update inner dimension parameters
+            params_dict['inner_width_1'].expression = f'{inner_width} mm'
+            params_dict['inner_width_2'].expression = f'{inner_width} mm'
+            params_dict['inner_length'].expression = f'{inner_length} mm'
+            
+            # Update USER parameters (labels) - all as TEXT with single quotes
+            param_label_type.expression = f"'{label_type}'"
+            param_label_name.expression = f"'{label_name}'"
+            param_label_color.expression = f"'{label_color}'"
+            param_label_qt.expression = f"'{label_qt}'"
+            
+            # Force regeneration
+            adsk.doEvents()
+            design.computeAll()
+            
+            # Create filename
+            safe_name = label_name.replace('/', '-').replace(' ', '_').replace('#', 'num')
+            bin_size = f"{bin_width}x{bin_length}"
+            filename = f"{label_type}_{safe_name}_{bin_size}_{label_color}.stl"
+            filepath = os.path.join(output_folder, filename)
+            
+            # Export STL
+            exportMgr = design.exportManager
+            stlOptions = exportMgr.createSTLExportOptions(design.rootComponent)
+            stlOptions.filename = filepath
+            stlOptions.meshRefinement = adsk.fusion.MeshRefinementSettings.MeshRefinementMedium
+            exportMgr.execute(stlOptions)
+            
+            # Update progress
+            progressDialog.progressValue = i + 1
+            progressDialog.message = f'Generated: {filename}'
+        
+        progressDialog.hide()
+        
+        if not progressDialog.wasCancelled:
+            ui.messageBox(f'Successfully generated {total_bins} STL files in:\n{output_folder}')
+        else:
+            ui.messageBox('Operation cancelled by user.')
+        
+    except:
+        if ui:
+            ui.messageBox('Failed:\n{}'.format(traceback.format_exc()))

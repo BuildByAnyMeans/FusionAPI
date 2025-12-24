@@ -1,0 +1,46 @@
+{
+    "autodeskProduct": "Fusion",
+    "type": "addin",
+    "id": "b8c3f1a2-5d4e-4f6a-9b8c-1234567890ab",
+    "author": "Parker",
+    "description": {
+        "": "Add center points to selected body faces"
+    },
+    "version": "1.0.0",
+    "runOnStartup": false,
+    "supportedOS": "windows|mac",
+    "editEnabled": true
+}
+```
+
+Save the file (`Cmd+S` on Mac, `Ctrl+S` on Windows).
+
+> **Note:** The `id` should be a unique UUID. The one above is a placeholder - you can generate a real one at [uuidgenerator.net](https://www.uuidgenerator.net/) if you plan to publish.
+
+---
+
+## Step 4: Create the README.txt
+
+Click on `README.txt` and add:
+```
+Face Center Points (Body) Add-In for Fusion 360
+===============================================
+
+Adds center points to one or more selected body faces.
+
+Features:
+- Multi-face selection
+- Three center calculation methods (parametric, bounding box, area centroid)
+- Sketch organization options
+- Construction point toggle
+
+Installation:
+1. Download and extract to your Fusion 360 AddIns folder
+2. In Fusion: Utilities > Add-Ins > Add-Ins tab
+3. Click the + button and select this folder
+4. Click Run
+
+Location: Solid > Create > Face Center Points
+
+Author: Parker
+Version: 1.0.0

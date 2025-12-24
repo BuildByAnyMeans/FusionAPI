@@ -1,0 +1,13 @@
+#include <Sim/SimTypeDefs.h>
+#include <Sim/Simulation/Studies.h>
+#include <Sim/Simulation/StructuralConstraint.h>
+#include <Sim/Simulation/Simulations.h>
+#include <Sim/Simulation/LoadCase.h>
+#include <Sim/Simulation/Study.h>
+#include <Sim/Simulation/StructuralLoadDirectional.h>
+#include <Sim/Simulation/SimAttribute.h>
+#include <Sim/Simulation/LoadCases.h>
+#include <Sim/Simulation/ForceLoad.h>
+#include <Sim/Simulation/ConstraintMask.h>
+#include <Sim/Simulation/LoadCaseItems.h>
+#include <Sim/Simulation/SimulationModel.h>
