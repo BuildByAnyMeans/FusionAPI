@@ -1,0 +1,13 @@
+{
+    "autodeskProduct": "Fusion",
+    "type": "addin",
+    "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "author": "Parker",
+    "description": {
+        "": "Generate optimized holes for heat-set threaded inserts with optional screw counterbores. Supports M2-M5 inserts with preset dimensions and customizable options."
+    },
+    "version": "1.0.0",
+    "runOnStartup": true,
+    "supportedOS": "windows|mac",
+    "editEnabled": true
+}
